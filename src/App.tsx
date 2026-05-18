@@ -159,24 +159,25 @@ export default function App() {
   const [gameState, setGameState] = useState<GameState>(() => {
     const savedUpgrades = JSON.parse(localStorage.getItem("neon_strike_permanent_upgrades") || "{}");
     const savedVehicles = JSON.parse(localStorage.getItem("neon_strike_owned_vehicles") || '["interceptor"]');
-    const currentVehicle = localStorage.getItem("neon_strike_current_vehicle") || "interceptor";
+    const currentVehicleId = localStorage.getItem("neon_strike_current_vehicle") || "interceptor";
+    const currentVehicle = VEHICLES.find(v => v.id === currentVehicleId) || VEHICLES[0];
     
     return {
       score: 0,
       highScore: parseInt(localStorage.getItem("neon_strike_high_score") || "0"),
-      bankedPoints: parseInt(localStorage.getItem("neon_strike_scrap") || "0"),
+      bankedPoints: parseInt(localStorage.getItem("neon_strike_scrap") || "1500"), // Added starting scrap for testing
       isGameOver: false,
       isVictory: false,
       isStarted: false,
       showSettings: false,
       showGarage: false,
-      currentVehicle: currentVehicle,
+      currentVehicle: currentVehicleId,
       ownedVehicles: savedVehicles,
       level: 1,
       stageTimer: 60,
       maxStageTime: 60,
       currentStage: 1,
-      lives: 2 + (savedUpgrades.armor || 0), // Reduced base lives
+      lives: currentVehicle.stats.hp + (savedUpgrades.armor || 0),
       rank: 1,
       xp: 0,
       maxXp: 100,
@@ -493,17 +494,18 @@ export default function App() {
 
     // Starfield animation
     const speedMult = 1 + (Math.hypot(playerVel.current.x, playerVel.current.y) * 0.1);
+    ctx.fillStyle = "rgba(255, 255, 255, 0.4)";
+    ctx.beginPath();
     stars.current.forEach(star => {
       star.y += star.speed * speedMult;
       if (star.y > height) {
         star.y = -10;
         star.x = Math.random() * width;
       }
-      ctx.fillStyle = `rgba(255, 255, 255, ${star.opacity})`;
-      ctx.beginPath();
+      ctx.moveTo(star.x, star.y);
       ctx.arc(star.x, star.y, star.size * (speedMult > 1.5 ? 1.5 : 1), 0, Math.PI * 2);
-      ctx.fill();
     });
+    ctx.fill();
 
     // Faster screen shake decay
     if (screenShake.current > 0) {
@@ -522,6 +524,9 @@ export default function App() {
     
     ctx.fillStyle = "#0a0a0c";
     ctx.fillRect(0, 0, width, height);
+
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
 
     // Optimized Background Grid
     if (gameState.settings.showGrid) {
@@ -810,8 +815,8 @@ export default function App() {
         ctx.strokeStyle = enemy.color;
         ctx.lineWidth = enemy.type === 'boss' ? 6 : 2;
         
-        if (gameState.settings.graphicsQuality === 'high') {
-          ctx.shadowBlur = 10;
+        if (gameState.settings.graphicsQuality === 'high' && enemies.current.length < 15) {
+          ctx.shadowBlur = 8;
           ctx.shadowColor = enemy.color;
 
           // Enemy Trail
@@ -955,7 +960,7 @@ export default function App() {
       
       // Visual Bloom / Glow
       if (gameState.settings.graphicsQuality === 'high') {
-        ctx.shadowBlur = 15 + pulse * 5;
+        ctx.shadowBlur = 12 + pulse * 4;
         ctx.shadowColor = pColor;
       }
 
@@ -1077,8 +1082,10 @@ export default function App() {
       
       ctx.globalAlpha = 0.7;
       ctx.fillStyle = "#3b82f6";
-      ctx.shadowBlur = 20;
-      ctx.shadowColor = "#3b82f6";
+      if (gameState.settings.graphicsQuality === 'high') {
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = "#3b82f6";
+      }
       ctx.beginPath();
       ctx.arc(knobX, knobY, 30, 0, Math.PI * 2);
       ctx.fill();
@@ -1097,10 +1104,17 @@ export default function App() {
     const handleResize = () => {
       if (containerRef.current && canvasRef.current) {
         const { width, height } = containerRef.current.getBoundingClientRect();
-        canvasRef.current.width = width;
-        canvasRef.current.height = height;
+        const dpr = window.devicePixelRatio || 1;
+        canvasRef.current.width = width * dpr;
+        canvasRef.current.height = height * dpr;
+        
+        const ctx = canvasRef.current.getContext('2d');
+        if (ctx) {
+          ctx.scale(dpr, dpr);
+        }
+
         if (frameCount.current === 0) {
-          playerPos.current = { x: width / 2, y: height * 0.8, currentX: width / 2, currentY: height * 0.8 };
+          playerPos.current = { x: width / 2, y: height * 0.8, currentX: width / 2, currentY: height * 0.8, tilt: 0 };
         }
       }
     };
@@ -1214,7 +1228,7 @@ export default function App() {
         {gameState.showGarage && (
           <motion.div 
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="absolute inset-0 z-[200] bg-black/95 backdrop-blur-2xl flex flex-col items-center p-6 md:p-12 overflow-y-auto"
+            className="absolute inset-0 z-[200] bg-black/98 backdrop-blur-md flex flex-col items-center p-6 md:p-12 overflow-y-auto will-change-transform"
             dir="rtl"
           >
             <div className="max-w-4xl w-full">
@@ -1273,7 +1287,7 @@ export default function App() {
                           <h4 className="text-xl font-bold text-white">{upg.title}</h4>
                           <div className="flex gap-1 justify-end mt-1">
                             {Array.from({ length: 5 }).map((_, i) => (
-                              <div key={i} className={`w-3 h-1 rounded-full ${i < upg.level ? upg.color.replace('text', 'bg') : 'bg-white/10'}`} />
+                              <div key={'upg-level-' + i} className={`w-3 h-1 rounded-full ${i < upg.level ? upg.color.replace('text', 'bg') : 'bg-white/10'}`} />
                             ))}
                           </div>
                         </div>
@@ -1321,13 +1335,13 @@ export default function App() {
                                <div className="flex flex-col items-end">
                                  <span className="text-[8px] text-gray-500 uppercase">الدرع</span>
                                  <div className="flex gap-0.5">
-                                   {Array.from({ length: 5 }).map((_, i) => <div key={i} className={`w-2 h-1 rounded-full ${i < veh.stats.hp ? "bg-red-500" : "bg-white/10"}`} />)}
+                                   {Array.from({ length: 5 }).map((_, i) => <div key={'hp-bar-' + i} className={`w-2 h-1 rounded-full ${i < veh.stats.hp ? "bg-red-500" : "bg-white/10"}`} />)}
                                  </div>
                                </div>
                                <div className="flex flex-col items-end">
                                  <span className="text-[8px] text-gray-500 uppercase">السرعة</span>
                                  <div className="flex gap-0.5">
-                                   {Array.from({ length: 5 }).map((_, i) => <div key={i} className={`w-2 h-1 rounded-full ${i < veh.stats.speed * 3 ? "bg-blue-500" : "bg-white/10"}`} />)}
+                                   {Array.from({ length: 5 }).map((_, i) => <div key={'speed-bar-' + i} className={`w-2 h-1 rounded-full ${i < veh.stats.speed * 3 ? "bg-blue-500" : "bg-white/10"}`} />)}
                                  </div>
                                </div>
                             </div>
@@ -1378,7 +1392,7 @@ export default function App() {
 
       {/* Game Header / HUD - Visible only during active gameplay */}
       <AnimatePresence>
-        {!gameState.isGameOver && !gameState.isVictory && (
+        {gameState.isStarted && !gameState.isGameOver && !gameState.isVictory && (
           <motion.div 
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -1397,7 +1411,7 @@ export default function App() {
           <div className="mt-3 flex gap-1.5 flex-wrap">
             {Array.from({ length: (VEHICLES.find(v => v.id === gameState.currentVehicle)?.stats.hp || 3) + (gameState.upgrades.armor || 0) }).map((_, i) => (
               <motion.div
-                key={i}
+                key={'hud-hp-' + i}
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
                 className={`w-5 h-1.5 md:w-8 md:h-2 rounded-full ${i < gameState.lives ? "bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]" : "bg-white/10"}`}
@@ -1431,7 +1445,7 @@ export default function App() {
               />
               {/* Milestone pips */}
               <div className="absolute inset-0 flex justify-around pointer-events-none">
-                 {[1, 2, 3].map(p => <div key={p} className="w-[1px] h-full bg-white/20" />)}
+                 {[1, 2, 3].map(p => <div key={'pip-' + p} className="w-[1px] h-full bg-white/20" />)}
               </div>
             </div>
             {/* Upgrade requirement hint */}
@@ -1463,7 +1477,7 @@ export default function App() {
           <div className="flex gap-1 mt-3">
             {Array.from({ length: 5 }).map((_, i) => (
               <Heart 
-                key={i}
+                key={'heart-' + i}
                 className={`w-4 h-4 ${i < gameState.lives ? "text-red-500 fill-red-500" : "text-white/10"}`} 
               />
             ))}
@@ -1511,20 +1525,9 @@ export default function App() {
             </div>
           )}
         </div>
-
-            <div className="p-4 bg-black/40 backdrop-blur-xl border border-white/10 rounded-2xl flex flex-col items-end shadow-2xl">
-            <span className="text-[8px] md:text-[10px] uppercase tracking-[0.2em] opacity-50 font-mono text-white">تحصيل_البيانات</span>
-            <span className="text-2xl md:text-5xl font-mono tabular-nums leading-none font-bold text-white tracking-tighter">
-              {gameState.score.toLocaleString()}
-            </span>
-            <div className="flex items-center gap-2 mt-2 pt-2 border-t border-white/5 w-full justify-end opacity-40">
-               <Trophy className="w-3 h-3 text-amber-400" />
-               <span className="text-[9px] font-mono text-white">{gameState.highScore.toLocaleString()}</span>
-            </div>
-          </div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+      </motion.div>
+    )}
+  </AnimatePresence>
 
       {/* Boss Health Bar */}
       {gameState.bossHealth !== null && gameState.bossMaxHealth !== null && (
@@ -1687,6 +1690,36 @@ export default function App() {
                    <Zap className="w-8 h-8 text-blue-400 animate-pulse" />
                 </div>
 
+                {/* HUD Data Square - Main Page Context */}
+                <div className="flex items-center justify-center p-6 md:p-8 bg-black/60 backdrop-blur-md border border-white/10 rounded-[2.5rem] shadow-2xl gap-6 md:gap-12 will-change-transform">
+                  <div className="flex flex-col items-end">
+                    <span className="text-[8px] md:text-[10px] uppercase tracking-[0.2em] opacity-50 font-mono text-white">البيانات_المجمعة</span>
+                    <span className="text-3xl md:text-5xl font-mono tabular-nums leading-none font-bold text-white tracking-tighter">
+                      {gameState.score.toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="h-12 w-[1px] bg-white/10" />
+                  <div className="flex flex-col items-end">
+                    <span className="text-[8px] md:text-[10px] uppercase tracking-[0.2em] opacity-50 font-mono text-white">سلامة_النواة</span>
+                    <div className="flex items-center gap-1.5 mt-1">
+                       {Array.from({ length: 5 }).map((_, i) => (
+                         <div 
+                           key={'main-heart-' + i} 
+                           className={`w-2.5 h-2.5 md:w-3.5 md:h-3.5 rounded-full border border-white/20 transition-all ${i < gameState.lives ? "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]" : "bg-white/5 opacity-20"}`} 
+                         />
+                       ))}
+                    </div>
+                  </div>
+                  <div className="h-12 w-[1px] bg-white/10" />
+                  <div className="flex flex-col items-end">
+                    <span className="text-[8px] md:text-[10px] uppercase tracking-[0.2em] opacity-50 font-mono text-white">السجل_الأقصى</span>
+                    <div className="flex items-center gap-2">
+                       <Trophy className="w-4 h-4 text-amber-400" />
+                       <span className="text-xl md:text-2xl font-mono font-bold text-white">{gameState.highScore.toLocaleString()}</span>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="flex flex-col md:flex-row gap-4 justify-center px-4">
                   <motion.button 
                     initial={{ opacity: 0, x: -20 }}
@@ -1706,7 +1739,7 @@ export default function App() {
                     onClick={() => setGameState(prev => ({ ...prev, showGarage: true }))}
                     className="group relative flex-1 px-10 py-5 bg-white/5 hover:bg-white/10 border border-white/20 transition-all rounded-full font-bold text-lg md:text-xl tracking-widest flex items-center justify-center gap-3 pointer-events-auto"
                   >
-                    <SettingsIcon className="w-5 h-5 md:w-6 md:h-6" />
+                    <ChevronUp className="w-5 h-5 md:w-6 md:h-6 rotate-90 text-blue-400" />
                     مستودع التطوير
                   </motion.button>
                 </div>
@@ -1816,13 +1849,13 @@ export default function App() {
           {gameState.isVictory && (
             <motion.div 
               initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-              className="absolute inset-0 flex flex-col items-center justify-center bg-blue-950/60 backdrop-blur-xl z-30 overflow-hidden"
+              className="absolute inset-0 flex flex-col items-center justify-center bg-blue-950/80 backdrop-blur-md z-30 overflow-hidden"
             >
               {/* Victory Particles Effect */}
               <div className="absolute inset-0 pointer-events-none">
                  {Array.from({ length: 20 }).map((_, i) => (
                     <motion.div
-                      key={i}
+                      key={'victory-particle-' + i}
                       initial={{ y: "110%", x: Math.random() * 100 + "%" }}
                       animate={{ y: "-10%", opacity: [0, 1, 0] }}
                       transition={{ duration: 2 + Math.random() * 3, repeat: Infinity, delay: Math.random() * 2 }}
@@ -1847,7 +1880,7 @@ export default function App() {
                   <p className="text-sm md:text-xl font-mono text-white/50 tracking-[0.4em]">اكتمل الصعود للنهاية</p>
                 </div>
                 
-                <div className="bg-white/5 border border-white/10 p-6 md:p-12 rounded-[2.5rem] md:rounded-[4rem] backdrop-blur-3xl shadow-2xl space-y-4 md:space-y-6 max-w-lg mx-auto">
+                <div className="bg-white/5 border border-white/20 p-6 md:p-12 rounded-[2.5rem] md:rounded-[4rem] backdrop-blur-lg shadow-2xl space-y-4 md:space-y-6 max-w-lg mx-auto will-change-transform">
                   <div className="text-5xl md:text-7xl font-mono font-bold text-white tracking-widest">
                     {gameState.score.toString().padStart(6, '0')}
                   </div>
@@ -1893,7 +1926,7 @@ export default function App() {
                   <p className="text-sm md:text-xl font-mono text-white/50 tracking-[0.2em]">فقدت سلامة النواة</p>
                 </div>
                 
-                <div className="bg-black/60 border border-white/10 p-6 md:p-10 rounded-[2rem] md:rounded-[3rem] backdrop-blur-2xl inline-block shadow-2xl max-w-sm w-full">
+                <div className="bg-black/80 border border-white/10 p-6 md:p-10 rounded-[2rem] md:rounded-[3rem] backdrop-blur-md inline-block shadow-2xl max-w-sm w-full will-change-transform">
                   <div className="text-[8px] md:text-[10px] uppercase tracking-[0.3em] opacity-40 font-mono mb-2 md:mb-4 text-white">الإنتاج النهائي لهذه المهمة</div>
                   <div className="text-5xl md:text-7xl font-mono font-bold text-white mb-2">
                     {gameState.score.toString().padStart(6, '0')}
