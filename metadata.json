@@ -1,0 +1,6 @@
+{
+  "name": "Neon Strike Arcade",
+  "description": "A high-octane neon arcade game built to demonstrate the game-making capabilities of Google AI Studio.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
